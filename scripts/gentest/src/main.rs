@@ -767,6 +767,12 @@ fn generate_dimension(dimen: &serde_json::Map<String, Value>) -> TokenStream {
                 let value = value();
                 quote!(taffy::style::Dimension::from_percent(#value))
             }
+            "min-content" => {
+                quote!(taffy::style::Dimension::MIN_CONTENT)
+            }
+            "max-content" => {
+                quote!(taffy::style::Dimension::MAX_CONTENT)
+            }
             _ => unreachable!(),
         },
         _ => unreachable!(),

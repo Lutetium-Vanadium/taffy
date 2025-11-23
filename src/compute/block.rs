@@ -9,7 +9,10 @@ use crate::util::sys::f32_max;
 use crate::util::sys::Vec;
 use crate::util::MaybeMath;
 use crate::util::{MaybeResolve, ResolveOrZero};
-use crate::{BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, LayoutBlockContainer, TextAlign};
+use crate::{
+    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CompactLength, Dimension, LayoutBlockContainer,
+    TextAlign,
+};
 
 #[cfg(feature = "content_size")]
 use super::common::content_size::compute_content_size_contribution;
@@ -23,8 +26,8 @@ struct BlockItem {
     /// and controls the order in which the nodes are placed
     order: u32,
 
-    /// Items that are tables don't have stretch sizing applied to them
-    is_table: bool,
+    /// Items that do not have stretch sizing applied to it
+    has_stretch_width: bool,
 
     /// The base size of this item
     size: Size<Option<f32>>,
@@ -126,8 +129,12 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
     let LayoutInput {
         known_dimensions, parent_size, available_space, run_mode, vertical_margins_are_collapsible, ..
     } = inputs;
-
     let style = tree.get_block_container_style(node_id);
+
+    let css_size = style.size();
+    let css_min_size = style.min_size();
+    let css_max_size = style.max_size();
+
     let raw_padding = style.padding();
     let raw_border = style.border();
     let raw_margin = style.margin();
@@ -204,6 +211,14 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
     let mut items = generate_item_list(tree, node_id, container_content_box_size);
 
     // 2. Compute container width
+
+    let known_dimensions = known_dimensions
+        .map_width(|w| w.or_else(|| resolve_content_based_width(tree, &items, css_size, content_box_inset)));
+    let min_size = min_size
+        .map_width(|w| w.or_else(|| resolve_content_based_width(tree, &items, css_min_size, content_box_inset)));
+    let max_size = max_size
+        .map_width(|w| w.or_else(|| resolve_content_based_width(tree, &items, css_max_size, content_box_inset)));
+
     let container_outer_width = known_dimensions.width.unwrap_or_else(|| {
         let available_width = available_space.width.maybe_sub(content_box_inset.horizontal_axis_sum());
         let intrinsic_width = determine_content_based_container_width(tree, &items, available_width)
@@ -230,6 +245,18 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
             text_align,
             own_margins_collapse_with_children,
         );
+
+    let min_size = min_size.map_height(|h| {
+        h.or_else(|| {
+            (css_min_size.height.is_instrinsic() && !css_min_size.height.is_auto()).then_some(intrinsic_outer_height)
+        })
+    });
+    let max_size = max_size.map_height(|h| {
+        h.or_else(|| {
+            (css_max_size.height.is_instrinsic() && !css_max_size.height.is_auto()).then_some(intrinsic_outer_height)
+        })
+    });
+
     let container_outer_height = known_dimensions
         .height
         .unwrap_or(intrinsic_outer_height.maybe_clamp(min_size.height, max_size.height))
@@ -317,7 +344,11 @@ fn generate_item_list(
             BlockItem {
                 node_id: child_node_id,
                 order: order as u32,
-                is_table: child_style.is_table(),
+                has_stretch_width: child_style.is_table()
+                    // If child has any size based on {min,max,fit}-content then we need to compute the width
+                    || (child_style.size().width.is_instrinsic() && !child_style.size().width.is_auto())
+                    || (child_style.min_size().width.is_instrinsic() && !child_style.min_size().width.is_auto())
+                    || (child_style.max_size().width.is_instrinsic() && !child_style.max_size().width.is_auto()),
                 size: child_style
                     .size()
                     .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
@@ -349,6 +380,22 @@ fn generate_item_list(
             }
         })
         .collect()
+}
+
+fn resolve_content_based_width(
+    tree: &mut impl LayoutPartialTree,
+    items: &[BlockItem],
+    css_size: Size<Dimension>,
+    content_box_inset: Rect<f32>,
+) -> Option<f32> {
+    let available_width = match css_size.width.tag() {
+        CompactLength::MIN_CONTENT_TAG => AvailableSpace::MinContent,
+        CompactLength::MAX_CONTENT_TAG => AvailableSpace::MaxContent,
+        _ => return None,
+    };
+
+    let intrinsic_width = determine_content_based_container_width(tree, &items, available_width);
+    Some(intrinsic_width + content_box_inset.horizontal_axis_sum())
 }
 
 /// Compute the content-based width in the case that the width of the container is not known
@@ -421,7 +468,7 @@ fn perform_final_layout_on_in_flow_children(
                 .map(|margin| margin.resolve_to_option(container_outer_width, |val, basis| tree.calc(val, basis)));
             let item_non_auto_margin = item_margin.map(|m| m.unwrap_or(0.0));
             let item_non_auto_x_margin_sum = item_non_auto_margin.horizontal_axis_sum();
-            let known_dimensions = if item.is_table {
+            let known_dimensions = if item.has_stretch_width {
                 Size::NONE
             } else {
                 item.size

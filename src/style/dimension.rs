@@ -1,7 +1,7 @@
 //! Style types for representing lengths / sizes
 use super::CompactLength;
 use crate::geometry::Rect;
-use crate::style_helpers::{FromLength, FromPercent, TaffyAuto, TaffyZero};
+use crate::style_helpers::{FromLength, FromPercent, TaffyAuto, TaffyMaxContent, TaffyMinContent, TaffyZero};
 
 /// A unit of linear measurement
 ///
@@ -203,6 +203,12 @@ impl TaffyZero for Dimension {
 impl TaffyAuto for Dimension {
     const AUTO: Self = Self(CompactLength::AUTO);
 }
+impl TaffyMinContent for Dimension {
+    const MIN_CONTENT: Self = Self(CompactLength::MIN_CONTENT);
+}
+impl TaffyMaxContent for Dimension {
+    const MAX_CONTENT: Self = Self(CompactLength::MAX_CONTENT);
+}
 impl FromLength for Dimension {
     fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
         Self::length(value.into())
@@ -247,6 +253,20 @@ impl Dimension {
         Self(CompactLength::auto())
     }
 
+    /// The size should be the "min-content" size.
+    /// This is the smallest size that can fit the item's contents with ALL soft line-wrapping opportunities taken
+    #[inline(always)]
+    pub const fn min_content() -> Self {
+        Self(CompactLength::min_content())
+    }
+
+    /// The size should be the "max-content" size.
+    /// This is the smallest size that can fit the item's contents with NO soft line-wrapping opportunities taken
+    #[inline(always)]
+    pub const fn max_content() -> Self {
+        Self(CompactLength::max_content())
+    }
+
     /// A `calc()` value. The value passed here is treated as an opaque handle to
     /// the actual calc representation and may be a pointer, index, etc.
     ///
@@ -282,6 +302,12 @@ impl Dimension {
     #[inline(always)]
     pub fn is_auto(self) -> bool {
         self.0.is_auto()
+    }
+
+    /// Returns true if the value is auto, min-content, max-content, or fit-content(...)
+    #[inline(always)]
+    pub fn is_instrinsic(self) -> bool {
+        self.0.is_intrinsic()
     }
 
     /// Get the raw `CompactLength` tag
