@@ -402,6 +402,22 @@ impl<T> Size<T> {
         Size { width: f(self.width, other.width), height: f(self.height, other.height) }
     }
 
+    /// Gets the extent along `axis`
+    pub fn axis(self, axis: AbsoluteAxis) -> T {
+        match axis {
+            AbsoluteAxis::Horizontal => self.width,
+            AbsoluteAxis::Vertical => self.height,
+        }
+    }
+
+    /// Applies the function `f` to the given axis
+    pub fn map_axis(self, axis: AbsoluteAxis, f: impl FnOnce(T) -> T) -> Size<T> {
+        match axis {
+            AbsoluteAxis::Horizontal => Size { width: f(self.width), height: self.height },
+            AbsoluteAxis::Vertical => Size { width: self.width, height: f(self.height) },
+        }
+    }
+
     /// Sets the extent of the main layout axis
     ///
     /// Whether this is the width or height depends on the `direction` provided

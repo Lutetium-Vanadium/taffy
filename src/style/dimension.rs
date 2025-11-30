@@ -310,6 +310,18 @@ impl Dimension {
         self.0.is_intrinsic()
     }
 
+    /// Returns true if the value is min-content
+    #[inline(always)]
+    pub fn is_min_content(self) -> bool {
+        self.0.is_min_content()
+    }
+
+    /// Returns true if the value is max-content
+    #[inline(always)]
+    pub fn is_max_content(self) -> bool {
+        self.0.is_max_content()
+    }
+
     /// Get the raw `CompactLength` tag
     pub fn tag(self) -> usize {
         self.0.tag()
